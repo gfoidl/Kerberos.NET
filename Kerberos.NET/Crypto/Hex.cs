@@ -57,7 +57,7 @@ namespace Kerberos.NET.Crypto
             bool spaces = false
         )
         {
-            if (hash == null || hash.Length <= 0)
+            if (hash.IsEmpty)
             {
                 return null;
             }

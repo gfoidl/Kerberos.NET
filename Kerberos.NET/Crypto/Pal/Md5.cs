@@ -1,19 +1,34 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace Kerberos.NET.Crypto
 {
 #if WEAKCRYPTO
-    internal class Md5 : IHashAlgorithm
+    internal sealed class Md5 : IHashAlgorithm
     {
-        public ReadOnlyMemory<byte> ComputeHash(ReadOnlySpan<byte> data)
-        {
-            var dataArray = data.ToArray();
+        private const int HashSize = 128;
 
-            using (var md5 = MD5.Create())
+        public int HashSizeInBytes
+        {
+            get
             {
-                return md5.ComputeHash(dataArray);
+#if DEBUG
+                using (var hash = MD5.Create())
+                {
+                    Debug.Assert(hash.HashSize == HashSize);
+                }
+#endif
+
+                return HashSize / 8;
             }
+        }
+
+        public bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
+        {
+            using var alogithm = MD5.Create();
+
+            return alogithm.TryComputeHash(data, hash, out bytesWritten);
         }
 
         public void Dispose() { }

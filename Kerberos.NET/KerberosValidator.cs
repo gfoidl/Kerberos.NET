@@ -2,6 +2,8 @@
 using Kerberos.NET.Entities;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Buffers;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Threading.Tasks;
@@ -124,11 +126,36 @@ namespace Kerberos.NET
 
         private static string Hash(string value)
         {
-            using (var sha = CryptoPal.Platform.Sha256())
+            using var sha = CryptoPal.Platform.Sha256();
+
+            int valueBytesLen = Encoding.UTF8.GetMaxByteCount(value.Length);
+            byte[] arrayToReturnToPool = null;
+
+            Span<byte> bytes = valueBytesLen <= 256
+                ? stackalloc byte[256]
+                : arrayToReturnToPool = ArrayPool<byte>.Shared.Rent(valueBytesLen);
+
+            int bytesWritten = Encoding.UTF8.GetBytes(value, bytes);
+            bytes = bytes.Slice(0, bytesWritten);
+
+            try
             {
-                return Hex.Hexify(
-                    sha.ComputeHash(Encoding.UTF8.GetBytes(value)).Span
-                );
+                Span<byte> hash = stackalloc byte[sha.HashSizeInBytes];
+
+                bool success = sha.TryComputeHash(bytes, hash, out bytesWritten);
+
+                Debug.Assert(success);
+                Debug.Assert(bytesWritten == hash.Length);
+
+                return Hex.Hexify(hash);
+            }
+            finally
+            {
+                if (arrayToReturnToPool != null)
+                {
+                    bytes.Clear();
+                    ArrayPool<byte>.Shared.Return(arrayToReturnToPool);
+                }
             }
         }
     }

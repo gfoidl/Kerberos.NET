@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Kerberos.NET.Crypto
@@ -12,69 +13,20 @@ namespace Kerberos.NET.Crypto
             CAlg = calg;
             HashSize = hashSize;
 
-            if (!CryptAcquireContext(ref hProvider, Algorithm, null, PROV_RSA_AES, 0))
+            if (!Native.CryptAcquireContext(ref _hProvider, algorithm, null, Native.PROV_RSA_AES, 0)
+             && !Native.CryptAcquireContext(ref _hProvider, algorithm, null, Native.PROV_RSA_AES, Native.CRYPT_NEWKEYSET))
             {
-                if (!CryptAcquireContext(ref hProvider, Algorithm, null, PROV_RSA_AES, CRYPT_NEWKEYSET))
-                {
-                    throw new Win32Exception(Marshal.GetLastWin32Error());
-                }
+                throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
-            if (!CryptCreateHash(hProvider, CAlg, IntPtr.Zero, 0, ref hHash))
+            if (!Native.CryptCreateHash(_hProvider, calg, IntPtr.Zero, 0, ref _hHash))
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
         }
 
-        private const string ADVAPI32 = "advapi32.dll";
-        private const int PROV_RSA_AES = 24;
-        private const int CRYPT_NEWKEYSET = 0x00000008;
-
-        private const int HP_HASHVAL = 0x0002;
-
-        [DllImport(ADVAPI32, CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool CryptAcquireContext(
-            ref IntPtr hProv,
-            string pszContainer,
-            string pszProvider,
-            int dwProvType,
-            int dwFlags
-        );
-
-        [DllImport(ADVAPI32, CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern bool CryptCreateHash(
-            IntPtr hProv,
-            int algId,
-            IntPtr hKey,
-            int dwFlags,
-            ref IntPtr phHash
-        );
-
-        [DllImport(ADVAPI32, SetLastError = true)]
-        private static extern bool CryptHashData(
-            IntPtr hHash,
-            byte* pbData,
-            int dataLen,
-            int flags
-        );
-
-        [DllImport(ADVAPI32, CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern bool CryptGetHashParam(
-            IntPtr hHash,
-            int dwParam,
-            [Out] byte[] pbData,
-            ref int pdwDataLen,
-            int dwFlags
-        );
-
-        [DllImport(ADVAPI32)]
-        private static extern bool CryptReleaseContext(IntPtr hProv, int dwFlags);
-
-        [DllImport(ADVAPI32, SetLastError = true)]
-        private static extern bool CryptDestroyHash(IntPtr hHash);
-
-        private readonly IntPtr hProvider;
-        private readonly IntPtr hHash;
+        private readonly IntPtr _hProvider;
+        private readonly IntPtr _hHash;
 
         public string Algorithm { get; }
 
@@ -82,39 +34,103 @@ namespace Kerberos.NET.Crypto
 
         public int HashSize { get; }
 
-        public ReadOnlyMemory<byte> ComputeHash(ReadOnlySpan<byte> data)
+        public int HashSizeInBytes => HashSize;
+
+        public bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
         {
-            fixed (byte* pData = data)
+            Debug.Assert(!data.IsEmpty);
+            Debug.Assert(hash.Length >= HashSizeInBytes);
+
+            fixed (byte* pData = &MemoryMarshal.GetReference(data))
             {
-                if (!CryptHashData(hHash, pData, data.Length, 0))
+                if (!Native.CryptHashData(_hHash, pData, data.Length, 0))
                 {
-                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                    bytesWritten = 0;
+                    return false;
                 }
             }
 
-            var hashSize = HashSize;
-
-            byte[] hashValue = new byte[hashSize];
-
-            if (!CryptGetHashParam(hHash, HP_HASHVAL, hashValue, ref hashSize, 0))
+            fixed (byte* pHash = &MemoryMarshal.GetReference(hash))
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            }
+                int len = hash.Length;
 
-            return new ReadOnlyMemory<byte>(hashValue);
+                if (!Native.CryptGetHashParam(_hHash, Native.HP_HASHVAL, pHash, ref len, 0))
+                {
+#if DEBUG
+                    int errorCode = Marshal.GetLastWin32Error();
+                    throw new Win32Exception(errorCode);
+#else
+                    return false;
+#endif
+                }
+
+                Debug.Assert(len == HashSizeInBytes);
+                bytesWritten = len;
+                return true;
+            }
         }
 
         public void Dispose()
         {
-            if (hHash != IntPtr.Zero)
+            if (_hHash != IntPtr.Zero)
             {
-                CryptDestroyHash(hHash);
+                Native.CryptDestroyHash(_hHash);
             }
 
-            if (hProvider != IntPtr.Zero)
+            if (_hProvider != IntPtr.Zero)
             {
-                CryptReleaseContext(hProvider, 0);
+                Native.CryptReleaseContext(_hProvider, 0);
             }
+        }
+
+        private static class Native
+        {
+            private const string ADVAPI32 = "advapi32.dll";
+
+            public const int PROV_RSA_AES = 24;
+            public const int CRYPT_NEWKEYSET = 0x00000008;
+            public const int HP_HASHVAL = 0x0002;
+
+            [DllImport(ADVAPI32, CharSet = CharSet.Unicode, SetLastError = true)]
+            public static extern bool CryptAcquireContext(
+                ref IntPtr hProv,
+                string pszContainer,
+                string pszProvider,
+                int dwProvType,
+                int dwFlags
+            );
+
+            [DllImport(ADVAPI32, CharSet = CharSet.Auto, SetLastError = true)]
+            public static extern bool CryptCreateHash(
+                IntPtr hProv,
+                int algId,
+                IntPtr hKey,
+                int dwFlags,
+                ref IntPtr phHash
+            );
+
+            [DllImport(ADVAPI32, SetLastError = true)]
+            public static extern bool CryptHashData(
+                IntPtr hHash,
+                byte* pbData,
+                int dataLen,
+                int flags
+            );
+
+            [DllImport(ADVAPI32, SetLastError = true)]
+            public static extern bool CryptGetHashParam(
+                IntPtr hHash,
+                int dwParam,
+                byte* pbData,
+                ref int pdwDataLen,
+                int dwFlags
+            );
+
+            [DllImport(ADVAPI32)]
+            public static extern bool CryptReleaseContext(IntPtr hProv, int dwFlags);
+
+            [DllImport(ADVAPI32, SetLastError = true)]
+            public static extern bool CryptDestroyHash(IntPtr hHash);
         }
     }
 }

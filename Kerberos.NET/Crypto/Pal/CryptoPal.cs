@@ -13,21 +13,21 @@ namespace Kerberos.NET.Crypto
 
         protected static readonly bool IsOsX = (Environment.OSVersion.Platform == PlatformID.MacOSX);
 
-        public static CryptoPal Platform => lazyPlatform.Value;
+        public static CryptoPal Platform => s_lazyPlatform.Value;
 
-        private static readonly Lazy<CryptoPal> lazyPlatform
+        private static readonly Lazy<CryptoPal> s_lazyPlatform
             = new Lazy<CryptoPal>(() => CreatePal());
 
-        private static Func<CryptoPal> injectedPal;
+        private static Func<CryptoPal> s_injectedPal;
 
         public static void RegisterPal(Func<CryptoPal> palFunc)
         {
-            injectedPal = palFunc ?? throw new InvalidOperationException("Cannot register a null PAL");
+            s_injectedPal = palFunc ?? throw new InvalidOperationException("Cannot register a null PAL");
         }
 
         private static CryptoPal CreatePal()
         {
-            var injected = injectedPal;
+            var injected = s_injectedPal;
 
             if (injected != null)
             {

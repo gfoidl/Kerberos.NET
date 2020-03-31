@@ -1,16 +1,33 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace Kerberos.NET.Crypto
 {
-    internal class Sha1: IHashAlgorithm
+    internal sealed class Sha1: IHashAlgorithm
     {
-        public ReadOnlyMemory<byte> ComputeHash(ReadOnlySpan<byte> data)
+        private const int HashSize = 160;
+
+        public int HashSizeInBytes
         {
-            using (var hash = SHA1.Create())
+            get
             {
-                return hash.ComputeHash(data.ToArray());
+#if DEBUG
+                using (var hash = SHA1.Create())
+                {
+                    Debug.Assert(hash.HashSize == HashSize);
+                }
+#endif
+
+                return HashSize / 8;
             }
+        }
+
+        public bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
+        {
+            using var alogithm = SHA1.Create();
+
+            return alogithm.TryComputeHash(data, hash, out bytesWritten);
         }
 
         public void Dispose() { }

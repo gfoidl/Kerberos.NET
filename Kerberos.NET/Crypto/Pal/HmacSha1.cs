@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Security.Cryptography;
-using static Kerberos.NET.BinaryExtensions;
 
 namespace Kerberos.NET.Crypto
 {
@@ -11,8 +10,8 @@ namespace Kerberos.NET.Crypto
             ReadOnlyMemory<byte> data
         )
         {
-            var keyArray = TryGetArrayFast(key);
-            var dataArray = TryGetArrayFast(data);
+            var keyArray = key.TryGetArrayFast();
+            var dataArray = data.TryGetArrayFast();
 
             using (var hmac = new HMACSHA1(keyArray))
             {

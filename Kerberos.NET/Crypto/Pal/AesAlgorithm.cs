@@ -25,9 +25,9 @@ namespace Kerberos.NET.Crypto
            bool encrypt
        )
         {
-            var keyArray = TryGetArrayFast(key);
-            var ivArray = TryGetArrayFast(iv);
-            var dataArray = TryGetArrayFast(data);
+            var keyArray = key.TryGetArrayFast();
+            var ivArray = iv.TryGetArrayFast();
+            var dataArray = data.TryGetArrayFast();
 
             ICryptoTransform transform;
 

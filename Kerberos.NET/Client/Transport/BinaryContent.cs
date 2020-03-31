@@ -3,7 +3,6 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
-using static Kerberos.NET.BinaryExtensions;
 
 namespace Kerberos.NET.Transport
 {
@@ -16,11 +15,9 @@ namespace Kerberos.NET.Transport
             this.data = data;
         }
 
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext context)
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext context)
         {
-            var bytes = TryGetArrayFast(data);
-
-            return stream.WriteAsync(bytes, 0, bytes.Length);
+            await stream.WriteAsync(data).ConfigureAwait(false);
         }
 
         protected override bool TryComputeLength(out long length)

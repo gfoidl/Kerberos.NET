@@ -196,7 +196,7 @@ namespace System.Security.Cryptography.Asn1
             // If the stack is closed out then everything is a definite encoding (BER, DER) or a
             // required indefinite encoding (CER). So we're correctly sized up, and ready to copy.
 
-            var memory = new Memory<byte>(new byte[_buffer.Length]);
+            Memory<byte> memory = new byte[_buffer.Length];
 
             _buffer.CopyTo(memory);
 
