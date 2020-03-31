@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -133,7 +134,7 @@ namespace Kerberos.NET
 
             Span<byte> bytes = valueBytesLen <= 256
                 ? stackalloc byte[256]
-                : arrayToReturnToPool = ArrayPool<byte>.Shared.Rent(valueBytesLen);
+                : arrayToReturnToPool = CryptoPool.Rent(valueBytesLen);
 
             int bytesWritten = Encoding.UTF8.GetBytes(value, bytes);
             bytes = bytes.Slice(0, bytesWritten);
@@ -153,8 +154,7 @@ namespace Kerberos.NET
             {
                 if (arrayToReturnToPool != null)
                 {
-                    bytes.Clear();
-                    ArrayPool<byte>.Shared.Return(arrayToReturnToPool);
+                    CryptoPool.Return(arrayToReturnToPool, bytesWritten);
                 }
             }
         }

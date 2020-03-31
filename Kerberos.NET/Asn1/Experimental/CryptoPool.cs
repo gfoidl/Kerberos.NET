@@ -22,6 +22,8 @@ namespace System.Security.Cryptography
 
         internal static void Return<T>(T[] array, int clearSize = ClearAll)
         {
+            if (array == null) return;
+
             Debug.Assert(clearSize <= array.Length);
             bool clearWholeArray = clearSize < 0;
 
