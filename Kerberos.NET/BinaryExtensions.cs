@@ -6,7 +6,6 @@ namespace Kerberos.NET
 {
     public static class BinaryExtensions
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static byte[] TryGetArrayFast(this ReadOnlyMemory<byte> bytes)
         {
             if (MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> segment) && segment.Array.Length == bytes.Length)
@@ -15,14 +14,8 @@ namespace Kerberos.NET
             }
             else
             {
-                return GetArraySlow(bytes);
+                return bytes.ToArray();
             }
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static byte[] GetArraySlow(ReadOnlyMemory<byte> bytes)
-        {
-            return bytes.ToArray();
         }
     }
 }

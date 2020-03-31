@@ -219,12 +219,25 @@ namespace Kerberos.NET.Server
             {
                 var encoded = body.Encode();
 
+#if NETSTANDARD2_1
+                Span<byte> paChecksum = stackalloc byte[sha1.HashSizeInBytes];
+                bool success = sha1.TryComputeHash(encoded.Span, paChecksum, out int bytesWritten);
+                Debug.Assert(success && bytesWritten == paChecksum.Length);
+
+                if (!KerberosCryptoTransformer.AreEqualSlow(paChecksum, authenticator.PaChecksum.Value.Span))
+                {
+                    throw new SecurityException("Invalid checksum");
+                }
+#elif NETSTANDARD2_0
                 var paChecksum = sha1.ComputeHash(encoded.Span);
 
                 if (!KerberosCryptoTransformer.AreEqualSlow(paChecksum.Span, authenticator.PaChecksum.Value.Span))
                 {
                     throw new SecurityException("Invalid checksum");
                 }
+#else
+#warning Update Tfms
+#endif
             }
 
             if (!KerberosConstants.WithinSkew(Service.Now(), authenticator.CTime, authenticator.CuSec, Service.Settings.MaximumSkew))

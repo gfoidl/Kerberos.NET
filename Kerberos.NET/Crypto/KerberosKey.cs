@@ -171,7 +171,7 @@ namespace Kerberos.NET.Crypto
         {
             get
             {
-                if (!string.IsNullOrWhiteSpace(Password))
+                if (!string.IsNullOrWhiteSpace(Password) && passwordBytes == null)
                 {
                     passwordBytes = Encoding.Unicode.GetBytes(Password);
                 }
@@ -184,9 +184,9 @@ namespace Kerberos.NET.Crypto
 
         private readonly object _keyLock = new object();
 
-        private ReadOnlyMemory<byte> keyCache = null;
+        private byte[] keyCache = null;
 
-        public ReadOnlyMemory<byte> GetKey(KerberosCryptoTransformer transformer = null)
+        public byte[] GetKey(KerberosCryptoTransformer transformer = null)
         {
             if (key != null && key.Length > 0)
             {
@@ -203,11 +203,11 @@ namespace Kerberos.NET.Crypto
                 throw new NotSupportedException();
             }
 
-            if (keyCache.Length <= 0)
+            if (keyCache.Length == 0)
             {
                 lock (_keyLock)
                 {
-                    if (keyCache.Length <= 0)
+                    if (keyCache.Length == 0)
                     {
                         keyCache = transformer.String2Key(this);
                     }
@@ -226,17 +226,17 @@ namespace Kerberos.NET.Crypto
                 return base.Equals(obj);
             }
 
-            return KerberosCryptoTransformer.AreEqualSlow(this.GetKey().Span, key.GetKey().Span) &&
+            return KerberosCryptoTransformer.AreEqualSlow(this.GetKey(), key.GetKey()) &&
                    this.EncryptionType == key.EncryptionType;
         }
 
         public override int GetHashCode()
         {
             return EntityHashCode.GetHashCode(
-                Version ?? 0, 
-                key ?? Array.Empty<byte>(), 
-                PasswordBytes, 
-                Host ?? "", 
+                Version ?? 0,
+                key ?? Array.Empty<byte>(),
+                PasswordBytes,
+                Host ?? "",
                 PrincipalName ?? new PrincipalName()
             );
         }

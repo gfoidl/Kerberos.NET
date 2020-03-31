@@ -54,21 +54,32 @@ namespace Kerberos.NET.Crypto
             {
                 int len = hash.Length;
 
-                if (!Native.CryptGetHashParam(_hHash, Native.HP_HASHVAL, pHash, ref len, 0))
+                if (Native.CryptGetHashParam(_hHash, Native.HP_HASHVAL, pHash, ref len, 0))
                 {
-#if DEBUG
-                    int errorCode = Marshal.GetLastWin32Error();
-                    throw new Win32Exception(errorCode);
-#else
-                    return false;
-#endif
+                    Debug.Assert(len == HashSizeInBytes);
+                    bytesWritten = len;
+                    return true;
                 }
 
-                Debug.Assert(len == HashSizeInBytes);
-                bytesWritten = len;
-                return true;
+                bytesWritten = 0;
+                return false;
             }
         }
+
+#if NETSTANDARD2_0
+        public ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data)
+        {
+            byte[] hash = new byte[HashSizeInBytes];
+
+            if (TryComputeHash(data.Span, hash, out int written))
+            {
+                Debug.Assert(written == hash.Length);
+                return hash;
+            }
+
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+#endif
 
         public void Dispose()
         {

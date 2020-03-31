@@ -14,8 +14,18 @@ namespace Kerberos.NET.Crypto
 
         public int HashSizeInBytes => _algorithm.HashSize / 8;
 
+#if NETSTANDARD2_1
         public bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
             => _algorithm.TryComputeHash(data, hash, out bytesWritten);
+#elif NETSTANDARD2_0
+        public virtual bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
+            => throw new PlatformNotSupportedException();
+
+        public ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data)
+            => _algorithm.ComputeHash(data.TryGetArrayFast());
+#else
+#warning Update Tfms
+#endif
 
         public void Dispose() => Dispose(true);
 

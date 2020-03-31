@@ -1,22 +1,30 @@
-﻿using System;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
+
+#if NETSTANDARD2_1
+using System;
+#endif
 
 namespace Kerberos.NET.Crypto
 {
     internal class HmacSha1 : IHmacAlgorithm
     {
-        public ReadOnlyMemory<byte> ComputeHash(
-            ReadOnlyMemory<byte> key,
-            ReadOnlyMemory<byte> data
-        )
-        {
-            var keyArray = key.TryGetArrayFast();
-            var dataArray = data.TryGetArrayFast();
+        public int HashSizeInBytes => 20;
 
-            using (var hmac = new HMACSHA1(keyArray))
-            {
-                return hmac.ComputeHash(dataArray, 0, data.Length);
-            }
+#if NETSTANDARD2_1
+        public bool TryComputeHash(byte[] key, ReadOnlySpan<byte> data, Span<byte> dest, out int bytesWritten)
+        {
+            using var hmac = new HMACSHA1(key);
+
+            return hmac.TryComputeHash(data, dest, out bytesWritten);
         }
+#elif NETSTANDARD2_0
+        public byte[] ComputeHash(byte[] key, byte[] data)
+        {
+            using var hmac = new HMACSHA1(key);
+            return hmac.ComputeHash(data);
+        }
+#else
+#warning Update Tfms
+#endif
     }
 }

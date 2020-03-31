@@ -8,21 +8,28 @@ namespace Kerberos.NET.Transport
 {
     internal class BinaryContent : HttpContent
     {
-        private readonly ReadOnlyMemory<byte> data;
+        private readonly ReadOnlyMemory<byte> _data;
 
         public BinaryContent(ReadOnlyMemory<byte> data)
         {
-            this.data = data;
+            _data = data;
         }
 
         protected override async Task SerializeToStreamAsync(Stream stream, TransportContext context)
         {
-            await stream.WriteAsync(data).ConfigureAwait(false);
+#if NETSTANDARD2_1
+            await stream.WriteAsync(_data).ConfigureAwait(false);
+#elif NETSTANDARD2_0
+            byte[] bytes = _data.TryGetArrayFast();
+            await stream.WriteAsync(bytes, 0, bytes.Length);
+#else
+#warning Update Tfms
+#endif
         }
 
         protected override bool TryComputeLength(out long length)
         {
-            length = data.Length;
+            length = _data.Length;
 
             return true;
         }

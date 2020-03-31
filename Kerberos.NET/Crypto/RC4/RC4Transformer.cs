@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Security;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Kerberos.NET.Crypto
@@ -8,7 +10,7 @@ namespace Kerberos.NET.Crypto
 #if WEAKCRYPTO
     public class RC4Transformer : KerberosCryptoTransformer
     {
-        private const int HashSize = 16;
+        public const int HashSize = 16;
         private const int ConfounderSize = 8;
 
         public override int ChecksumSize => HashSize;
@@ -17,85 +19,237 @@ namespace Kerberos.NET.Crypto
 
         public override int KeySize => HashSize;
 
-        public override ReadOnlyMemory<byte> String2Key(KerberosKey key)
+        public override byte[] String2Key(KerberosKey key)
         {
             return MD4(key.PasswordBytes);
         }
 
-        public override ReadOnlyMemory<byte> Encrypt(ReadOnlyMemory<byte> data, KerberosKey key, KeyUsage usage)
+        public override byte[] Encrypt(byte[] data, KerberosKey key, KeyUsage usage)
         {
-            var k1 = key.GetKey(this);
+            byte[] k1 = key.GetKey(this);
+#if NETSTANDARD2_1
+            Span<byte> salt = stackalloc byte[sizeof(int)];
+            GetSalt((int)usage, salt);
 
-            var salt = GetSalt((int)usage);
+            var k2 = new byte[HashSize];
+            bool success = HMACMD5(k1, salt, k2, out int bytesWritten);
+            Debug.Assert(success && bytesWritten == k2.Length);
 
-            var k2 = HMACMD5(k1, salt);
+            Span<byte> confounder = stackalloc byte[ConfounderSize];
+            GenerateRandomBytes(ConfounderSize, confounder);
 
-            var confounder = GenerateRandomBytes(ConfounderSize);
+            byte[] plaintextBuffer = null;
+            Span<byte> plaintext = data.Length + ConfounderSize <= 256
+                ? stackalloc byte[256]
+                : plaintextBuffer = CryptoPool.Rent(data.Length + ConfounderSize);
 
-            var plaintextBuffer = new byte[data.Length + confounder.Length];
-            var plaintext = new Memory<byte>(plaintextBuffer);
+            try
+            {
+                confounder.CopyTo(plaintext);
+                data.Span.CopyTo(plaintext.Slice(ConfounderSize));
 
-            confounder.CopyTo(plaintext);
-            data.CopyTo(plaintext.Slice(confounder.Length));
+                Span<byte> checksum = stackalloc byte[HashSize];
+                success = HMACMD5(k2, plaintext, checksum, out bytesWritten);
+                Debug.Assert(success && bytesWritten == checksum.Length);
 
-            var checksum = HMACMD5(k2, plaintextBuffer);
+                Span<byte> k3 = stackalloc byte[HashSize];
+                success = HMACMD5(k2, checksum, k3, out bytesWritten);
+                Debug.Assert(success && bytesWritten == k3.Length);
 
-            var k3 = HMACMD5(k2, checksum);
+                var ciphertext = new byte[checksum.Length + plaintext.Length];
+                checksum.CopyTo(ciphertext);
+                RC4.Transform(k3, plaintext, ciphertext.AsSpan(checksum.Length));
 
-            var ciphertext = new Memory<byte>(new byte[plaintext.Length + checksum.Length]);
+                return ciphertext;
+            }
+            finally
+            {
+                CryptoPool.Return(plaintextBuffer);
+            }
+#elif NETSTANDARD2_0
+            byte[] salt = GetSalt((int)usage);
 
-            RC4.Transform(k3.Span, plaintext.Span, ciphertext.Span.Slice(checksum.Length));
+            byte[] k2 = HMACMD5(k1, salt);
 
-            checksum.CopyTo(ciphertext);
+            byte[] confounder = GenerateRandomBytes(ConfounderSize);
+
+            var plaintext = new byte[data.Length + confounder.Length];
+
+            confounder.CopyTo(plaintext.AsSpan());
+            data.CopyTo(plaintext.AsSpan(confounder.Length));
+
+            byte[] checksum = HMACMD5(k2, plaintext);
+
+            byte[] k3 = HMACMD5(k2, checksum);
+
+            var ciphertext = new byte[plaintext.Length + checksum.Length];
+            checksum.CopyTo(ciphertext.AsSpan());
+            RC4.Transform(k3, plaintext, ciphertext.AsSpan(checksum.Length));
 
             return ciphertext;
+#else
+#warning Update Tfms
+#endif
         }
 
-        public override ReadOnlyMemory<byte> Decrypt(ReadOnlyMemory<byte> ciphertext, KerberosKey key, KeyUsage usage)
+        public override byte[] Decrypt(byte[] ciphertext, KerberosKey key, KeyUsage usage)
         {
-            var k1 = key.GetKey(this);
+            byte[] k1 = key.GetKey(this);
+#if NETSTANDARD2_1
+            Span<byte> salt = stackalloc byte[sizeof(int)];
+            GetSalt((int)usage, salt);
 
-            var salt = GetSalt((int)usage);
+            var k2 = new byte[HashSize];
+            bool success = HMACMD5(k1, salt, k2, out int bytesWritten);
+            Debug.Assert(success && bytesWritten == k2.Length);
 
-            var k2 = HMACMD5(k1, salt);
+            ReadOnlySpan<byte> incomingChecksum = ciphertext.Span.Slice(0, HashSize);
+            ReadOnlySpan<byte> ciphertextOffset = ciphertext.Span.Slice(HashSize);
 
-            var incomingChecksum = ciphertext.Slice(0, HashSize);
+            Span<byte> k3 = stackalloc byte[HashSize];
+            success = HMACMD5(k2, incomingChecksum, k3, out bytesWritten);
+            Debug.Assert(success && bytesWritten == k3.Length);
 
-            var k3 = HMACMD5(k2, incomingChecksum);
+            var plaintext = new byte[ciphertextOffset.Length];
+            RC4.Transform(k3, ciphertextOffset, plaintext);
 
-            var ciphertextOffset = ciphertext.Slice(HashSize);
+            Span<byte> actualChecksum = stackalloc byte[HashSize];
+            success = HMACMD5(k2, plaintext, actualChecksum, out bytesWritten);
+            Debug.Assert(success && bytesWritten == actualChecksum.Length);
 
-            var plaintext = new Memory<byte>(new byte[ciphertextOffset.Length]);
-
-            RC4.Transform(k3.Span, ciphertextOffset.Span, plaintext.Span);
-
-            var actualChecksum = HMACMD5(k2, plaintext);
-
-            if (!AreEqualSlow(incomingChecksum.Span, actualChecksum.Span.Slice(0, actualChecksum.Length)))
+            if (!AreEqualSlow(incomingChecksum, actualChecksum))
             {
                 throw new SecurityException("Invalid Checksum");
             }
 
-            return plaintext.Slice(ConfounderSize);
+            return plaintext.AsMemory(0, ConfounderSize);
+#elif NETSTANDARD2_0
+            byte[] salt = GetSalt((int)usage);
+
+            byte[] k2 = HMACMD5(k1, salt);
+
+            Span<byte> incomingChecksum = ciphertext.AsSpan(0, HashSize);
+            Span<byte> ciphertextOffset = ciphertext.AsSpan(HashSize);
+
+            byte[] k3 = HMACMD5(k2, incomingChecksum.ToArray());
+
+            var plaintext = new byte[ciphertextOffset.Length];
+
+            RC4.Transform(k3, ciphertextOffset, plaintext);
+
+            var actualChecksum = HMACMD5(k2, plaintext);
+
+            if (!AreEqualSlow(incomingChecksum, actualChecksum))
+            {
+                throw new SecurityException("Invalid Checksum");
+            }
+
+            return plaintext.AsSpan(ConfounderSize).ToArray();
+#else
+#warning Update Tfms
+#endif
         }
 
-        private static readonly ReadOnlyMemory<byte> ChecksumSignatureKey = Encoding.ASCII.GetBytes("signaturekey\0");
+        // TODO: use ROS static data optimization
+        private static readonly byte[] s_checksumSignatureKey = Encoding.ASCII.GetBytes("signaturekey\0");
 
-        public override ReadOnlyMemory<byte> MakeChecksum(ReadOnlyMemory<byte> key, ReadOnlySpan<byte> data, KeyUsage keyUsage)
+        public override void MakeChecksum(byte[] key, ReadOnlySpan<byte> data, KeyUsage keyUsage, Span<byte> dest, out int bytesWritten)
         {
-            var ksign = HMACMD5(key, ChecksumSignatureKey);
+#if NETSTANDARD2_1
+            byte[] ksign = new byte[HashSize];
+            bool success = HMACMD5(key, s_checksumSignatureKey, ksign, out int written);
+            Debug.Assert(success && written == ksign.Length);
+
+            byte[] arrayToReturnToPool = null;
+            Span<byte> span = 4 + data.Length <= 256
+                ? stackalloc byte[256]
+                : arrayToReturnToPool = CryptoPool.Rent(4 + data.Length);
+
+            try
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(span, (int)keyUsage);
+                data.CopyTo(span.Slice(4));
+
+                Span<byte> tmp = stackalloc byte[HashSize];
+                success = MD5(span, tmp, out written);
+                Debug.Assert(success && written == HashSize);
+
+                success = HMACMD5(ksign, tmp, dest, out bytesWritten);
+                Debug.Assert(success && bytesWritten == HashSize);
+            }
+            finally
+            {
+                CryptoPool.Return(arrayToReturnToPool);
+            }
+#elif NETSTANDARD2_0
+            byte[] ksign = HMACMD5(key, s_checksumSignatureKey);
 
             Span<byte> span = new byte[4 + data.Length];
-
+            BinaryPrimitives.WriteInt32LittleEndian(span, (int)keyUsage);
             data.CopyTo(span.Slice(4));
 
-            BinaryPrimitives.WriteInt32LittleEndian(span, (int)keyUsage);
+            Span<byte> tmp = stackalloc byte[HashSize];
+            bool success= MD5(span, tmp, out int written);
+            Debug.Assert(success && written == tmp.Length);
 
-            var tmp = MD5(span);
-
-            return HMACMD5(ksign, tmp);
+            //return HMACMD5(ksign, tmp);
+            var foo= HMACMD5(ksign, tmp);
+#else
+#warning Update Tfms
+#endif
         }
 
+        private static bool MD5(ReadOnlySpan<byte> key, Span<byte> hash, out int bytesWritten)
+        {
+            using var md5 = CryptoPal.Platform.Md5();
+
+            return md5.TryComputeHash(key, hash, out bytesWritten);
+        }
+
+#if NETSTANDARD2_1
+        private static void GetSalt(int usage, Span<byte> dest)
+        {
+            Debug.Assert(dest.Length >= sizeof(int));
+
+            switch (usage)
+            {
+                case 3:
+                    usage = 8;
+                    break;
+                case 23:
+                    usage = 13;
+                    break;
+            }
+
+            BinaryPrimitives.WriteInt32LittleEndian(dest, usage);
+        }
+
+        private static bool HMACMD5(byte[] key, ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten)
+        {
+            var hmac = CryptoPal.Platform.HmacMd5();
+
+            return hmac.TryComputeHash(key, data, hash, out bytesWritten);
+        }
+
+        private static bool MD4(ReadOnlySpan<byte> key, Span<byte> hash, out int bytesWritten)
+        {
+            using var md4 = CryptoPal.Platform.Md4();
+
+            return md4.TryComputeHash(key, hash, out bytesWritten);
+        }
+
+        private static byte[] MD4(ReadOnlySpan<byte> key)
+        {
+            using var md4 = CryptoPal.Platform.Md4();
+            var hash = new byte[md4.HashSizeInBytes];
+
+            bool success = md4.TryComputeHash(key, hash, out int bytesWritten);
+
+            Debug.Assert(success && bytesWritten == hash.Length);
+
+            return hash;
+        }
+#elif NETSTANDARD2_0
         private static byte[] GetSalt(int usage)
         {
             switch (usage)
@@ -114,28 +268,27 @@ namespace Kerberos.NET.Crypto
             return salt;
         }
 
-        private static ReadOnlyMemory<byte> MD5(ReadOnlySpan<byte> data)
-        {
-            using (var md5 = CryptoPal.Platform.Md5())
-            {
-                return md5.ComputeHash(data);
-            }
-        }
-
-        private static ReadOnlyMemory<byte> HMACMD5(ReadOnlyMemory<byte> key, ReadOnlyMemory<byte> data)
+        private static byte[] HMACMD5(byte[] key, byte[] data)
         {
             var hmac = CryptoPal.Platform.HmacMd5();
 
             return hmac.ComputeHash(key, data);
         }
 
-        private static ReadOnlyMemory<byte> MD4(byte[] key)
+        private static byte[] MD4(ReadOnlySpan<byte> key)
         {
-            using (var md4 = CryptoPal.Platform.Md4())
-            {
-                return md4.ComputeHash(key);
-            }
+            using var md4 = CryptoPal.Platform.Md4();
+            var hash = new byte[md4.HashSizeInBytes];
+
+            bool success = md4.TryComputeHash(key, hash, out int bytesWritten);
+
+            Debug.Assert(success && bytesWritten == hash.Length);
+
+            return hash;
         }
+#else
+#warning Update Tfms
+#endif
     }
 #endif
 }

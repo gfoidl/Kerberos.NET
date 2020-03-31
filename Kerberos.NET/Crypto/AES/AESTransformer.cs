@@ -31,7 +31,7 @@ namespace Kerberos.NET.Crypto.AES
 
         public override int KeySize { get; }
 
-        public override ReadOnlyMemory<byte> String2Key(KerberosKey key)
+        public override byte[] String2Key(KerberosKey key)
         {
             return String2Key(
                 key.PasswordBytes,

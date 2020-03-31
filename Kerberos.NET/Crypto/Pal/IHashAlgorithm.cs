@@ -1,6 +1,9 @@
 ﻿using System;
+
+#if NETSTANDARD2_1
 using System.Diagnostics;
 using System.Security.Cryptography;
+#endif
 
 namespace Kerberos.NET.Crypto
 {
@@ -10,9 +13,12 @@ namespace Kerberos.NET.Crypto
 
         bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten);
 
+#if NETSTANDARD2_1
+        ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data) => ComputeHash(data.Span);
+
         ReadOnlyMemory<byte> ComputeHash(ReadOnlySpan<byte> data)
         {
-            byte[] hash = new byte[HashSizeInBytes];
+            var hash = new byte[HashSizeInBytes];
 
             if (TryComputeHash(data, hash, out int written))
             {
@@ -22,5 +28,10 @@ namespace Kerberos.NET.Crypto
 
             throw new CryptographicException();
         }
+#elif NETSTANDARD2_0
+        ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data);
+#else
+#warning Update Tfms
+#endif
     }
 }
