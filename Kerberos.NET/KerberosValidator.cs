@@ -1,13 +1,12 @@
-﻿using Kerberos.NET.Crypto;
-using Kerberos.NET.Entities;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Buffers;
+﻿using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Kerberos.NET.Crypto;
+using Kerberos.NET.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace Kerberos.NET
 {
@@ -129,6 +128,7 @@ namespace Kerberos.NET
         {
             using var sha = CryptoPal.Platform.Sha256();
 
+#if NETSTANDARD2_1
             int valueBytesLen = Encoding.UTF8.GetMaxByteCount(value.Length);
             byte[] arrayToReturnToPool = null;
 
@@ -142,11 +142,8 @@ namespace Kerberos.NET
             try
             {
                 Span<byte> hash = stackalloc byte[sha.HashSizeInBytes];
-
                 bool success = sha.TryComputeHash(bytes, hash, out bytesWritten);
-
-                Debug.Assert(success);
-                Debug.Assert(bytesWritten == hash.Length);
+                Debug.Assert(success && bytesWritten == hash.Length);
 
                 return Hex.Hexify(hash);
             }
@@ -157,6 +154,17 @@ namespace Kerberos.NET
                     CryptoPool.Return(arrayToReturnToPool, bytesWritten);
                 }
             }
+#elif NETSTANDARD2_0
+            byte[] bytes = Encoding.UTF8.GetBytes(value);
+
+            Span<byte> hash = stackalloc byte[sha.HashSizeInBytes];
+            bool success = sha.TryComputeHash(bytes, hash, out int bytesWritten);
+            Debug.Assert(success && bytesWritten == hash.Length);
+
+            return Hex.Hexify(hash);
+#else
+#warning Update Tfms
+#endif
         }
     }
 }

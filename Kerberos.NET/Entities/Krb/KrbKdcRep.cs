@@ -60,7 +60,7 @@ namespace Kerberos.NET.Entities
                     appendRealm ? null : request.RealmName
                 ),
                 EncryptedPart = KrbEncryptedData.Encrypt(
-                    encTicketPart.EncodeApplication(),
+                    encTicketPart.EncodeApplication().TryGetArrayFast(),
                     request.ServicePrincipalKey,
                     KeyUsage.Ticket
                 )
@@ -117,7 +117,7 @@ namespace Kerberos.NET.Entities
                 MessageType = MessageType.KRB_AS_REP,
                 Ticket = ticket,
                 EncPart = KrbEncryptedData.Encrypt(
-                    encKdcRepPart.EncodeApplication(),
+                    encKdcRepPart.EncodeApplication().TryGetArrayFast(),
                     request.EncryptedPartKey,
                     keyUsage
                 )

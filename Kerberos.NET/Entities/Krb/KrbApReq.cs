@@ -45,7 +45,7 @@ namespace Kerberos.NET.Entities
                 Ticket = ticket,
                 ApOptions = options,
                 Authenticator = KrbEncryptedData.Encrypt(
-                    authenticator.EncodeApplication(),
+                    authenticator.EncodeApplication().TryGetArrayFast(),
                     authenticatorKey,
                     KeyUsage.ApReqAuthenticator
                 )

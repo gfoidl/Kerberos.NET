@@ -6,13 +6,12 @@ namespace Kerberos.NET.Crypto
 {
     public static class PKInitString2Key
     {
-        public static ReadOnlyMemory<byte> String2Key(
+        public static void String2Key(
             ReadOnlySpan<byte> sharedSecret,
-            int length,
+            Span<byte> key,
             ReadOnlySpan<byte> clientNonce = default,
             ReadOnlySpan<byte> serverNonce = default)
         {
-            var key = new byte[length];
             using IHashAlgorithm sha1 = CryptoPal.Platform.Sha1();
 
             int xSize = sharedSecret.Length + clientNonce.Length + serverNonce.Length;
@@ -40,7 +39,7 @@ namespace Kerberos.NET.Crypto
                 int position = 0;
                 int count = 0;
 
-                for (var i = 0; i < length; i++)
+                for (var i = 0; i < key.Length; i++)
                 {
                     int index;
 
@@ -62,8 +61,6 @@ namespace Kerberos.NET.Crypto
 
                     key[i] = fill[index];
                 }
-
-                return key;
             }
             finally
             {

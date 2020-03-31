@@ -46,7 +46,7 @@ namespace Kerberos.NET.Crypto
             try
             {
                 confounder.CopyTo(plaintext);
-                data.Span.CopyTo(plaintext.Slice(ConfounderSize));
+                data.CopyTo(plaintext.Slice(ConfounderSize));
 
                 Span<byte> checksum = stackalloc byte[HashSize];
                 success = HMACMD5(k2, plaintext, checksum, out bytesWritten);
@@ -103,8 +103,8 @@ namespace Kerberos.NET.Crypto
             bool success = HMACMD5(k1, salt, k2, out int bytesWritten);
             Debug.Assert(success && bytesWritten == k2.Length);
 
-            ReadOnlySpan<byte> incomingChecksum = ciphertext.Span.Slice(0, HashSize);
-            ReadOnlySpan<byte> ciphertextOffset = ciphertext.Span.Slice(HashSize);
+            ReadOnlySpan<byte> incomingChecksum = ciphertext.AsSpan(0, HashSize);
+            ReadOnlySpan<byte> ciphertextOffset = ciphertext.AsSpan(HashSize);
 
             Span<byte> k3 = stackalloc byte[HashSize];
             success = HMACMD5(k2, incomingChecksum, k3, out bytesWritten);
@@ -122,7 +122,7 @@ namespace Kerberos.NET.Crypto
                 throw new SecurityException("Invalid Checksum");
             }
 
-            return plaintext.AsMemory(0, ConfounderSize);
+            return plaintext.AsSpan(ConfounderSize).ToArray();
 #elif NETSTANDARD2_0
             byte[] salt = GetSalt((int)usage);
 
@@ -192,8 +192,10 @@ namespace Kerberos.NET.Crypto
             bool success= MD5(span, tmp, out int written);
             Debug.Assert(success && written == tmp.Length);
 
-            //return HMACMD5(ksign, tmp);
-            var foo= HMACMD5(ksign, tmp);
+            byte[] res = HMACMD5(ksign, tmp.ToArray());
+
+            res.CopyTo(dest);
+            bytesWritten = res.Length;
 #else
 #warning Update Tfms
 #endif

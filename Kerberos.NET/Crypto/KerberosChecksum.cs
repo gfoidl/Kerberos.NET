@@ -7,11 +7,11 @@ namespace Kerberos.NET.Crypto
     {
         public KeyUsage Usage { get; set; } = KeyUsage.PaForUserChecksum;
 
-        public ReadOnlyMemory<byte> Signature { get; private set; }
+        public byte[] Signature { get; private set; }
 
-        protected ReadOnlyMemory<byte> Data { get; private set; }
+        protected byte[] Data { get; }
 
-        protected KerberosChecksum(ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> data)
+        protected KerberosChecksum(byte[] signature, byte[] data)
         {
             Signature = signature;
             Data = data;
@@ -27,10 +27,22 @@ namespace Kerberos.NET.Crypto
 
         public void Sign(KerberosKey key)
         {
+#if NETSTANDARD2_1
+
+#elif NETSTANDARD2_0
             Signature = SignInternal(key);
+#else
+#warning Update Tfms
+#endif
         }
 
-        protected abstract ReadOnlyMemory<byte> SignInternal(KerberosKey key);
+#if NETSTANDARD2_1
+        protected abstract void SignInternal(KerberosKey key, Span<byte> dest, out int written);
+#elif NETSTANDARD2_0
+        protected abstract byte[] SignInternal(KerberosKey key);
+#else
+#warning Update Tfms
+#endif
 
         protected abstract bool ValidateInternal(KerberosKey key);
     }
@@ -55,11 +67,12 @@ namespace Kerberos.NET.Crypto
     {
         private readonly KerberosCryptoTransformer decryptor;
 
-        protected AesKerberosChecksum(KerberosCryptoTransformer decryptor, ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> data)
+        protected AesKerberosChecksum(KerberosCryptoTransformer decryptor, byte[] signature, byte[] data)
             : base(signature, data)
         {
             this.decryptor = decryptor;
         }
+
 
         protected override ReadOnlyMemory<byte> SignInternal(KerberosKey key)
         {
@@ -76,34 +89,38 @@ namespace Kerberos.NET.Crypto
         {
             var actualChecksum = SignInternal(key);
 
-            return KerberosCryptoTransformer.AreEqualSlow(actualChecksum.Span, Signature.Span);
+            return KerberosCryptoTransformer.AreEqualSlow(actualChecksum.Span, Signature);
         }
     }
 #if WEAKCRYPTO
     public class HmacMd5KerberosChecksum : KerberosChecksum
     {
-        public HmacMd5KerberosChecksum(ReadOnlyMemory<byte> signature, ReadOnlyMemory<byte> data)
+        public HmacMd5KerberosChecksum(byte[] signature, byte[] data)
             : base(signature, data)
         {
         }
 
-        protected override ReadOnlyMemory<byte> SignInternal(KerberosKey key)
+#if NETSTANDARD2_1
+
+#elif NETSTANDARD2_0
+        protected override byte[] SignInternal(KerberosKey key)
         {
             var crypto = CryptoService.CreateTransform(EncryptionType.RC4_HMAC_NT);
 
-            return crypto.MakeChecksum(
-                key.GetKey(crypto),
-                Data.Span,
-                Usage
-            );
+            return crypto.MakeChecksum(key.GetKey(crypto), Data, Usage);
+
+            return crypto.MakeChecksum(key.GetKey(crypto), Data, Usage, )
         }
+#else
+#warning Update Tfms
+#endif
 
         protected override bool ValidateInternal(KerberosKey key)
         {
             var actualChecksum = SignInternal(key);
 
-            return KerberosCryptoTransformer.AreEqualSlow(actualChecksum.Span, Signature.Span);
+            return KerberosCryptoTransformer.AreEqualSlow(actualChecksum, Signature);
         }
     }
 #endif
-}
+    }

@@ -1,5 +1,5 @@
-﻿using Kerberos.NET.Crypto;
-using System;
+﻿using System;
+using Kerberos.NET.Crypto;
 
 namespace Kerberos.NET.Entities
 {
@@ -7,19 +7,19 @@ namespace Kerberos.NET.Entities
     {
         public T Decrypt<T>(KerberosKey key, KeyUsage usage, Func<ReadOnlyMemory<byte>, T> func)
         {
-            var crypto = CryptoService.CreateTransform(this.EType);
+            var crypto = CryptoService.CreateTransform(EType);
 
             if (crypto == null)
             {
                 throw new InvalidOperationException($"CryptoService couldn't create a transform for type {key.EncryptionType}");
             }
 
-            var decrypted = crypto.Decrypt(this.Cipher, key, usage);
+            var decrypted = crypto.Decrypt(Cipher, key, usage);
 
             return func(decrypted);
         }
 
-        public static KrbEncryptedData Encrypt(ReadOnlyMemory<byte> data, KerberosKey key, KeyUsage usage)
+        public static KrbEncryptedData Encrypt(byte[] data, KerberosKey key, KeyUsage usage)
         {
             var crypto = CryptoService.CreateTransform(key.EncryptionType);
 
@@ -28,7 +28,7 @@ namespace Kerberos.NET.Entities
                 throw new InvalidOperationException($"CryptoService couldn't create a transform for type {key.EncryptionType}");
             }
 
-            ReadOnlyMemory<byte> cipher = crypto.Encrypt(data, key, usage);
+            byte[] cipher = crypto.Encrypt(data, key, usage);
 
             return new KrbEncryptedData
             {

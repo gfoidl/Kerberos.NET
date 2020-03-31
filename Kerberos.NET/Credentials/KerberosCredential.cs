@@ -29,7 +29,7 @@ namespace Kerberos.NET.Credentials
             var key = CreateKey();
 
             KrbEncryptedData encData = KrbEncryptedData.Encrypt(
-                tsEncoded,
+                tsEncoded.TryGetArrayFast(),
                 key,
                 KeyUsage.PaEncTs
             );

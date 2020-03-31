@@ -1,5 +1,5 @@
-﻿using Kerberos.NET.Crypto;
-using System;
+﻿using System;
+using Kerberos.NET.Crypto;
 
 namespace KerbDump
 {
@@ -11,17 +11,17 @@ namespace KerbDump
 
         public override int KeySize => throw new NotImplementedException();
 
-        public override ReadOnlyMemory<byte> Encrypt(ReadOnlyMemory<byte> data, KerberosKey key, KeyUsage usage)
+        public override byte[] Encrypt(byte[] data, KerberosKey key, KeyUsage usage)
         {
             return data;
         }
 
-        public override ReadOnlyMemory<byte> Decrypt(ReadOnlyMemory<byte> cipher, KerberosKey key, KeyUsage usage)
+        public override byte[] Decrypt(byte[] cipher, KerberosKey key, KeyUsage usage)
         {
-            return cipher.ToArray();
+            return cipher;
         }
 
-        public override ReadOnlyMemory<byte> String2Key(KerberosKey key)
+        public override byte[] String2Key(KerberosKey key)
         {
             return key.PasswordBytes;
         }

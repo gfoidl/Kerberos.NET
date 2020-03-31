@@ -14,9 +14,7 @@ namespace Kerberos.NET.Crypto
         bool TryComputeHash(ReadOnlySpan<byte> data, Span<byte> hash, out int bytesWritten);
 
 #if NETSTANDARD2_1
-        ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data) => ComputeHash(data.Span);
-
-        ReadOnlyMemory<byte> ComputeHash(ReadOnlySpan<byte> data)
+        byte[] ComputeHash(ReadOnlySpan<byte> data)
         {
             var hash = new byte[HashSizeInBytes];
 
@@ -29,7 +27,7 @@ namespace Kerberos.NET.Crypto
             throw new CryptographicException();
         }
 #elif NETSTANDARD2_0
-        ReadOnlyMemory<byte> ComputeHash(ReadOnlyMemory<byte> data);
+        byte[] ComputeHash(byte[] data);
 #else
 #warning Update Tfms
 #endif

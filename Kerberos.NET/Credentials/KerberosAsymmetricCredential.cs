@@ -1,6 +1,7 @@
 ﻿using Kerberos.NET.Crypto;
 using Kerberos.NET.Entities;
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
@@ -211,15 +212,29 @@ namespace Kerberos.NET.Credentials
         {
             using (var sha1 = CryptoPal.Platform.Sha1())
             {
-                var encoded = body.Encode();
+                ReadOnlyMemory<byte> encoded = body.Encode();
 
-                var paChecksum = sha1.ComputeHash(encoded.Span);
+#if NETSTANDARD2_1
+                byte[] paChecksum = sha1.ComputeHash(encoded.Span);
+#elif NETSTANDARD2_0
+                byte[] paChecksum = sha1.ComputeHash(encoded.TryGetArrayFast());
+#else
+#warning Update Tfms
+#endif
 
                 var parametersAreCached = CacheKeyAgreementParameters(agreement);
 
                 if (parametersAreCached)
                 {
-                    clientDHNonce = GenerateNonce(body.EType.First(), agreement.PublicKey.KeyLength);
+#if NETSTANDARD2_1
+                    var tmp = new byte[agreement.PublicKey.KeyLength];
+                    GenerateNonce(body.EType[0], tmp.Length, tmp);
+                    clientDHNonce = tmp;
+#elif NETSTANDARD2_0
+                    clientDHNonce = GenerateNonce(body.EType[0], agreement.PublicKey.KeyLength);
+#else
+#warning Update Tfms
+#endif
                 }
 
                 var domainParams = KrbDiffieHellmanDomainParameters.FromKeyAgreement(agreement);
@@ -247,12 +262,24 @@ namespace Kerberos.NET.Credentials
             }
         }
 
+#if NETSTANDARD2_1
+        private static void GenerateNonce(EncryptionType encryptionType, int minSize, Span<byte> dest)
+        {
+            Debug.Assert(dest.Length >= minSize);
+
+            var transformer = CryptoService.CreateTransform(encryptionType);
+            transformer.GenerateRandomBytes(minSize, dest);
+        }
+#elif NETSTANDARD2_0
         private static ReadOnlyMemory<byte> GenerateNonce(EncryptionType encryptionType, int minSize)
         {
             var transformer = CryptoService.CreateTransform(encryptionType);
 
             return transformer.GenerateRandomBytes(minSize);
         }
+#else
+#warning Update Tfms
+#endif
 
         /// <summary>
         /// Decrypts the response from the KDC using credential-supplied secrets.
@@ -303,8 +330,10 @@ namespace Kerberos.NET.Credentials
             }
 
             var transform = CryptoService.CreateTransform(kdcRep.EncPart.EType);
+            var key = new byte[transform.KeySize];
 
-            return PKInitString2Key.String2Key(derivedKey.Span, transform.KeySize, clientDHNonce.Span, serverDHNonce);
+            PKInitString2Key.String2Key(derivedKey.Span, key, clientDHNonce.Span, serverDHNonce);
+            return key;
         }
 
         private ReadOnlyMemory<byte> sharedSecret;

@@ -13,9 +13,7 @@ namespace Kerberos.NET.Crypto
 #if NETSTANDARD2_1
         bool TryComputeHash(byte[] key, ReadOnlySpan<byte> data, Span<byte> dest, out int bytesWritten);
 
-        ReadOnlyMemory<byte> ComputeHash(byte[] key, ReadOnlyMemory<byte> data) => ComputeHash(key, data.Span);
-
-        ReadOnlyMemory<byte> ComputeHash(byte[] key, ReadOnlySpan<byte> data)
+        byte[] ComputeHash(byte[] key, ReadOnlySpan<byte> data)
         {
             var hash = new byte[HashSizeInBytes];
 

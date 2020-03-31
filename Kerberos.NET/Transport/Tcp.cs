@@ -10,11 +10,10 @@ namespace Kerberos.NET.Transport
     {
         public static ReadOnlyMemory<byte> FormatKerberosMessageStream(ReadOnlyMemory<byte> message)
         {
-            var kerbMessage = new Memory<byte>(new byte[message.Length + 4]);
+            var kerbMessage = new byte[message.Length + 4];
 
-            BinaryPrimitives.WriteInt32BigEndian(kerbMessage.Span.Slice(0, 4), message.Length);
-
-            message.CopyTo(kerbMessage.Slice(4));
+            BinaryPrimitives.WriteInt32BigEndian(kerbMessage.AsSpan(0, 4), message.Length);
+            message.Span.CopyTo(kerbMessage.AsSpan(4));
 
             return kerbMessage;
         }
@@ -32,7 +31,7 @@ namespace Kerberos.NET.Transport
                     read,
                     response.Length - read,
                     cancellation
-                );
+                ).ConfigureAwait(false);
             }
 
             return response;

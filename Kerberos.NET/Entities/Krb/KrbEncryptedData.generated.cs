@@ -14,7 +14,7 @@ namespace Kerberos.NET.Entities
     {
         public EncryptionType EType;
         public int? KeyVersionNumber;
-        public ReadOnlyMemory<byte> Cipher;
+        public byte[] Cipher;
       
         public ReadOnlyMemory<byte> Encode()
         {
@@ -46,7 +46,7 @@ namespace Kerberos.NET.Entities
             }
 
             writer.PushSequence(new Asn1Tag(TagClass.ContextSpecific, 2 ));
-            writer.WriteOctetString(Cipher.Span);
+            writer.WriteOctetString(Cipher);
             writer.PopSequence(new Asn1Tag(TagClass.ContextSpecific, 2 ));
             writer.PopSequence(tag);
         }
@@ -151,7 +151,7 @@ namespace Kerberos.NET.Entities
 
             if (explicitReader.TryReadPrimitiveOctetStringBytes(out ReadOnlyMemory<byte> tmpCipher))
             {
-                decoded.Cipher = tmpCipher;
+                decoded.Cipher = tmpCipher.TryGetArrayFast();
             }
             else
             {

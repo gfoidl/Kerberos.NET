@@ -98,12 +98,18 @@ namespace Kerberos.NET.Server
             var transform = CryptoService.CreateTransform(etype);
 
             ReadOnlyMemory<byte> clientDHNonce = authPack.ClientDHNonce.GetValueOrDefault();
-            ReadOnlyMemory<byte> serverDHNonce = default;
+            byte[] serverDHNonce = default;
 
             if (clientDHNonce.Length > 0)
             {
+#if NETSTANDARD2_1
+                serverDHNonce = new byte[agreement.PublicKey.KeyLength];
+                transform.GenerateRandomBytes(agreement.PublicKey.KeyLength, serverDHNonce);
+#elif NETSTANDARD2_0
                 serverDHNonce = transform.GenerateRandomBytes(agreement.PublicKey.KeyLength);
-
+#else
+#warning Update Tfms
+#endif
                 Service.Principals.CacheKey(agreement.PrivateKey);
             }
 
@@ -115,12 +121,8 @@ namespace Kerberos.NET.Server
                 keyInfo.Nonce = authPack.PKAuthenticator.Nonce;
             }
 
-            var sessionKey = PKInitString2Key.String2Key(
-                derivedKey.Span,
-                transform.KeySize,
-                clientDHNonce.Span,
-                serverDHNonce.Span
-            );
+            Span<byte> sessionKey = stackalloc byte[transform.KeySize];
+            PKInitString2Key.String2Key(derivedKey.Span, sessionKey, clientDHNonce.Span, serverDHNonce);
 
             var paPkRep = new KrbPaPkAsRep
             {
@@ -229,9 +231,9 @@ namespace Kerberos.NET.Server
                     throw new SecurityException("Invalid checksum");
                 }
 #elif NETSTANDARD2_0
-                var paChecksum = sha1.ComputeHash(encoded.Span);
+                var paChecksum = sha1.ComputeHash(encoded.TryGetArrayFast());
 
-                if (!KerberosCryptoTransformer.AreEqualSlow(paChecksum.Span, authenticator.PaChecksum.Value.Span))
+                if (!KerberosCryptoTransformer.AreEqualSlow(paChecksum, authenticator.PaChecksum.Value.Span))
                 {
                     throw new SecurityException("Invalid checksum");
                 }

@@ -149,7 +149,7 @@ namespace Kerberos.NET.Entities
             KerberosConstants.Now(out authenticator.CTime, out authenticator.CuSec);
 
             var encryptedAuthenticator = KrbEncryptedData.Encrypt(
-                authenticator.EncodeApplication(),
+                authenticator.EncodeApplication().TryGetArrayFast(),
                 tgtSessionKey.AsKey(),
                 KeyUsage.PaTgsReqAuthenticator
             );
